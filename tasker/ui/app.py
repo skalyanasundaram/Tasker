@@ -14,7 +14,7 @@ except ImportError:
 
 from ..constants import (
     STAR_COLORS, WINDOW_WIDTH, WINDOW_HEIGHT, GLOBAL_HOTKEY,
-    DEFAULT_DATA_FILE, REMINDER_CHECK_MS,
+    DEFAULT_DATA_FILE, REMINDER_CHECK_MS, LOCK_FILE, CONFIG_DIR,
 )
 from ..storage import load_config, load_tasks, save_tasks, save_config
 from ..tray import create_tray_icon
@@ -31,6 +31,16 @@ class TaskerApp:
         self.tray_icon = None
         self.running = True
         self.show_completed = False
+        self._lock_file = None
+
+        # ---- single instance check ----
+        if not self._acquire_lock():
+            # Another instance is already running
+            _root = tk.Tk()
+            _root.withdraw()
+            messagebox.showinfo("Tasker", "Tasker is already running.")
+            _root.destroy()
+            sys.exit(0)
 
         # ---- root window (frameless) ----
         self.root = tk.Tk()
@@ -593,7 +603,41 @@ class TaskerApp:
                 self.tray_icon.stop()
             except Exception:
                 pass
+        self._release_lock()
         self.root.destroy()
+
+    def _acquire_lock(self):
+        """Try to acquire an exclusive lock file. Returns True on success."""
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        try:
+            self._lock_file = open(LOCK_FILE, 'w')
+            if sys.platform == 'win32':
+                import msvcrt
+                msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self._lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except (OSError, IOError):
+            if self._lock_file:
+                self._lock_file.close()
+                self._lock_file = None
+            return False
+
+    def _release_lock(self):
+        """Release the lock file."""
+        if self._lock_file:
+            try:
+                if sys.platform == 'win32':
+                    import msvcrt
+                    msvcrt.locking(self._lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self._lock_file, fcntl.LOCK_UN)
+                self._lock_file.close()
+            except Exception:
+                pass
+            self._lock_file = None
 
     def run(self):
         self.root.mainloop()

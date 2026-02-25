@@ -17,6 +17,7 @@ UNFOCUS_BORDER_COLOR = "#E0E0E0"
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".tasker")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 DEFAULT_DATA_FILE = os.path.join(CONFIG_DIR, "tasks.json")
+LOCK_FILE = os.path.join(CONFIG_DIR, "tasker.lock")
 
 GLOBAL_HOTKEY = "ctrl+k"  # chord: Ctrl+K, Ctrl+K
 WINDOW_WIDTH = 480
