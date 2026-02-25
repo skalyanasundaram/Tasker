@@ -121,7 +121,17 @@ def _clear_list(token, list_id):
         _graph_request("DELETE", url, token)
 
 
+def _to_graph_date(iso_str):
+    """Convert to Graph dateTimeTimeZone with date only (for dueDateTime)."""
+    dt = datetime.datetime.fromisoformat(iso_str)
+    return {
+        "dateTime": dt.strftime("%Y-%m-%dT00:00:00"),
+        "timeZone": "UTC",
+    }
+
+
 def _to_graph_datetime(iso_str):
+    """Convert to Graph dateTimeTimeZone with full time (for reminderDateTime)."""
     dt = datetime.datetime.fromisoformat(iso_str)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=datetime.timezone.utc)
@@ -146,7 +156,9 @@ def _task_payload(task):
         payload["importance"] = "high"
     reminder = task.get("reminder")
     if reminder:
-        payload["dueDateTime"] = _to_graph_datetime(reminder)
+        payload["dueDateTime"] = _to_graph_date(reminder)
+        payload["reminderDateTime"] = _to_graph_datetime(reminder)
+        payload["isReminderOn"] = True
     if task.get("done"):
         payload["completedDateTime"] = _now_graph_datetime()
     return payload
