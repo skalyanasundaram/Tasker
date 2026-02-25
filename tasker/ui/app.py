@@ -58,6 +58,7 @@ class TaskerApp:
         self.data_file = self.cfg.get("data_file", DEFAULT_DATA_FILE)
         self.tasks = load_tasks(self.data_file)
         self._file_mtime = self._get_file_mtime()
+        self._last_save_ts = 0.0
 
         # ---- title bar ----
         self.title_bar = TitleBar(self.root, on_close=self.quit_app,
@@ -95,7 +96,7 @@ class TaskerApp:
         grip.bind("<B1-Motion>", self._on_resize)
 
         # ---- key bindings ----
-        self.root.bind("<Escape>", lambda e: self.hide_window())
+        self.root.bind("<Escape>", self._on_escape)
         self.root.bind("<Alt-e>", lambda e: open_settings(self.root, self))
         self.root.bind("<Alt-k>", lambda e: open_keybindings(self.root))
         self.root.bind("<Alt-c>", lambda e: self._toggle_view())
@@ -181,7 +182,7 @@ class TaskerApp:
         self.task_list.update_selection(index)
 
     def _update_text(self, index, var):
-        if index < len(self.tasks):
+        if index < len(self.tasks) and not self.tasks[index].get("done", False):
             self.tasks[index]["text"] = var.get()
             self._save()
 
@@ -387,6 +388,7 @@ class TaskerApp:
     def _save(self):
         save_tasks(self.data_file, self.tasks)
         self._file_mtime = self._get_file_mtime()
+        self._last_save_ts = _time.time()
 
     def _save_and_rebuild(self):
         self._save()
@@ -401,20 +403,38 @@ class TaskerApp:
             return 0
 
     def _watch_file(self):
-        """Poll the data file every 5 seconds for external changes."""
+        """Poll the data file every 60 seconds for external changes."""
         if not self.running:
             return
         try:
-            current_mtime = self._get_file_mtime()
-            if current_mtime and current_mtime != self._file_mtime:
-                self._file_mtime = current_mtime
-                self.tasks = load_tasks(self.data_file)
-                self._rebuild_rows()
+            # skip if we saved recently (debounce 5s)
+            if (_time.time() - self._last_save_ts) < 5:
+                pass
+            else:
+                current_mtime = self._get_file_mtime()
+                if current_mtime and current_mtime != self._file_mtime:
+                    self._file_mtime = current_mtime
+                    self.tasks = load_tasks(self.data_file)
+                    self._rebuild_rows()
         except Exception:
             pass
         self.root.after(60000, self._watch_file)
 
     # ---- visibility ----
+    def _on_escape(self, event):
+        """Layered Esc: dismiss picker → switch to active view → hide."""
+        # 1. if inline picker is open, dismiss it
+        if self.task_list._picker_frame:
+            self.task_list.dismiss_picker()
+            return "break"
+        # 2. if showing completed view, switch to active
+        if self.show_completed:
+            self._toggle_view()
+            return "break"
+        # 3. hide the window
+        self.hide_window()
+        return "break"
+
     def hide_window(self):
         self.root.withdraw()
 

@@ -24,13 +24,21 @@ def save_config(cfg):
 
 def load_tasks(path):
     """Load tasks from a flat JSON list – easy to hand-edit."""
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (PermissionError, json.JSONDecodeError, OSError):
+            return []
     return []
 
 
 def save_tasks(path, tasks):
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(tasks, f, indent=2, ensure_ascii=False)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(tasks, f, indent=2, ensure_ascii=False)
+    except (PermissionError, OSError):
+        pass  # silently fail if file is locked (e.g. OneDrive sync)
