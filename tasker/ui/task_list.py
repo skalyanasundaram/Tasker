@@ -157,6 +157,51 @@ class TaskList:
         def _on_spin_change(*_args):
             pf.after(50, _clamp_to_now)
 
+        # --- validation helpers ---
+        def _validate_int(value, lo, hi):
+            """Allow empty (mid-edit) or an integer within [lo, hi]."""
+            if value == '' or value == '-':
+                return True
+            try:
+                v = int(value)
+                return lo <= v <= hi
+            except ValueError:
+                return False
+
+        vcmd_year = (pf.register(lambda v: _validate_int(v, now.year, 2035)), '%P')
+        vcmd_month = (pf.register(lambda v: _validate_int(v, 1, 12)), '%P')
+        vcmd_day = (pf.register(lambda v: _validate_int(v, 1, 31)), '%P')
+        vcmd_hour = (pf.register(lambda v: _validate_int(v, 0, 23)), '%P')
+        vcmd_min = (pf.register(lambda v: _validate_int(v, 0, 59)), '%P')
+
+        def _mousewheel_spin(event, var, lo, hi, wrap=False):
+            """Scroll spinbox value with mouse wheel."""
+            try:
+                cur = var.get()
+            except tk.TclError:
+                return
+            delta = 1 if event.delta > 0 else -1
+            nv = cur + delta
+            if wrap:
+                if nv > hi:
+                    nv = lo
+                elif nv < lo:
+                    nv = hi
+            else:
+                nv = max(lo, min(hi, nv))
+            var.set(nv)
+            _on_spin_change()
+
+        def _focusout_clamp(var, lo, hi, default):
+            """On focus-out, clamp empty/invalid to default."""
+            try:
+                v = var.get()
+                if v < lo or v > hi:
+                    var.set(default)
+            except tk.TclError:
+                var.set(default)
+            _on_spin_change()
+
         # date row
         date_row = tk.Frame(pf, bg="#F8F8E8")
         date_row.pack(fill=tk.X, padx=8, pady=(6, 2))
@@ -166,27 +211,42 @@ class TaskList:
 
         year_spin = tk.Spinbox(date_row, from_=now.year, to=2035,
                                textvariable=year_var, width=5,
-                               font=("Segoe UI", 9), state="readonly",
+                               font=("Segoe UI", 9),
+                               validate='key', validatecommand=vcmd_year,
                                command=_on_spin_change)
         year_spin.pack(side=tk.LEFT, padx=2)
+        year_spin.bind('<MouseWheel>',
+                       lambda e: _mousewheel_spin(e, year_var, now.year, 2035))
+        year_spin.bind('<FocusOut>',
+                       lambda e: _focusout_clamp(year_var, now.year, 2035, dt.year))
 
         tk.Label(date_row, text="/", bg="#F8F8E8").pack(side=tk.LEFT)
 
         month_spin = tk.Spinbox(date_row, from_=1, to=12,
                                 textvariable=month_var, width=3,
                                 font=("Segoe UI", 9), format="%02.0f",
-                                state="readonly", command=_on_spin_change,
+                                validate='key', validatecommand=vcmd_month,
+                                command=_on_spin_change,
                                 wrap=True)
         month_spin.pack(side=tk.LEFT, padx=2)
+        month_spin.bind('<MouseWheel>',
+                        lambda e: _mousewheel_spin(e, month_var, 1, 12, wrap=True))
+        month_spin.bind('<FocusOut>',
+                        lambda e: _focusout_clamp(month_var, 1, 12, dt.month))
 
         tk.Label(date_row, text="/", bg="#F8F8E8").pack(side=tk.LEFT)
 
         day_spin = tk.Spinbox(date_row, from_=1, to=31,
                               textvariable=day_var, width=3,
                               font=("Segoe UI", 9), format="%02.0f",
-                              state="readonly", command=_on_spin_change,
+                              validate='key', validatecommand=vcmd_day,
+                              command=_on_spin_change,
                               wrap=True)
         day_spin.pack(side=tk.LEFT, padx=2)
+        day_spin.bind('<MouseWheel>',
+                      lambda e: _mousewheel_spin(e, day_var, 1, 31, wrap=True))
+        day_spin.bind('<FocusOut>',
+                      lambda e: _focusout_clamp(day_var, 1, 31, dt.day))
 
         # time row
         time_row = tk.Frame(pf, bg="#F8F8E8")
@@ -198,18 +258,28 @@ class TaskList:
         hour_spin = tk.Spinbox(time_row, from_=0, to=23,
                                textvariable=hour_var, width=3,
                                font=("Segoe UI", 9), format="%02.0f",
-                               state="readonly", command=_on_spin_change,
+                               validate='key', validatecommand=vcmd_hour,
+                               command=_on_spin_change,
                                wrap=True)
         hour_spin.pack(side=tk.LEFT, padx=2)
+        hour_spin.bind('<MouseWheel>',
+                       lambda e: _mousewheel_spin(e, hour_var, 0, 23, wrap=True))
+        hour_spin.bind('<FocusOut>',
+                       lambda e: _focusout_clamp(hour_var, 0, 23, dt.hour))
 
         tk.Label(time_row, text=":", bg="#F8F8E8").pack(side=tk.LEFT)
 
         min_spin = tk.Spinbox(time_row, from_=0, to=59,
                               textvariable=min_var, width=3,
                               font=("Segoe UI", 9), format="%02.0f",
-                              state="readonly", command=_on_spin_change,
+                              validate='key', validatecommand=vcmd_min,
+                              command=_on_spin_change,
                               wrap=True)
         min_spin.pack(side=tk.LEFT, padx=2)
+        min_spin.bind('<MouseWheel>',
+                      lambda e: _mousewheel_spin(e, min_var, 0, 59, wrap=True))
+        min_spin.bind('<FocusOut>',
+                      lambda e: _focusout_clamp(min_var, 0, 59, dt.minute))
 
         # buttons row
         btn_row = tk.Frame(pf, bg="#F8F8E8")
