@@ -11,7 +11,7 @@ class TitleBar(tk.Frame):
         self.pack(fill=tk.X, side=tk.TOP)
         self.pack_propagate(False)
 
-        self._root = parent
+        self._parent_win = parent
         self._drag_data = {"x": 0, "y": 0}
         self._on_toggle_view = on_toggle_view
         self._showing_completed = False
@@ -54,10 +54,10 @@ class TitleBar(tk.Frame):
         self._on_toggle_view(self._showing_completed)
 
     def _start_drag(self, event):
-        self._drag_data["x"] = event.x_root - self._root.winfo_x()
-        self._drag_data["y"] = event.y_root - self._root.winfo_y()
+        self._drag_data["x"] = event.x_root - self._parent_win.winfo_x()
+        self._drag_data["y"] = event.y_root - self._parent_win.winfo_y()
 
     def _on_drag(self, event):
         x = event.x_root - self._drag_data["x"]
         y = event.y_root - self._drag_data["y"]
-        self._root.geometry(f"+{x}+{y}")
+        self._parent_win.geometry(f"+{x}+{y}")
