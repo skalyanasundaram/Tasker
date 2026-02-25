@@ -142,10 +142,6 @@ class TaskRow:
                        lambda e: callbacks["on_move_down"](index))
                 w.bind("<Control-d>",
                        lambda e: callbacks["on_delete"](index))
-                w.bind("<space>",
-                       lambda e: callbacks["on_toggle_done_kb"](index))
-                w.bind("<Return>",
-                       lambda e: callbacks["on_toggle_done_kb"](index))
 
             # checkbox and star/reminder: fire on_focus for row selection
             self.chk.bind("<FocusIn>",
