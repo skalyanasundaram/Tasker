@@ -31,3 +31,4 @@ Description:
   - The navigation is not clear, when I move I can't see which control I am in. Something that helps see better is good.
   - Shift up should move the task up along with its childs in active view implement down as well. In completed view this should not work.
   - once in a while check the file for offline update. Or listen to file handle modification if possible and update the tasks in UI
+  - Lets modify the settings page. When opening the settings page, it should have two tabs. One for choosing the task log file as it currentl does. Second is to enable Microsoft ToDo sync. The task sync should have two option. Checkbox to enable/disable the feature. And second text box to ask for Task List Name. It should be one way push to Microsoft todo task. Replace all the task in that task list and update what we can from tasker to Microsoft todo task. Do not touch other task list. It should update the cloud task after every update in background.

@@ -4,6 +4,7 @@ import datetime
 import time as _time
 import os
 import sys
+import threading
 
 try:
     import keyboard as _kb
@@ -52,13 +53,40 @@ class TaskerApp:
         if self.cfg is None:
             # first run – ask user where to store tasks
             chosen_path = open_first_run_config(self.root)
-            self.cfg = {"data_file": chosen_path}
+            self.cfg = {
+                "data_file": chosen_path,
+                "ms_sync_enabled": False,
+                "ms_tasklist_name": "Tasker",
+                "ms_client_id": "",
+            }
             save_config(self.cfg)
 
         self.data_file = self.cfg.get("data_file", DEFAULT_DATA_FILE)
+        config_changed = False
+        if "ms_sync_enabled" not in self.cfg:
+            self.cfg["ms_sync_enabled"] = False
+            config_changed = True
+        if "ms_tasklist_name" not in self.cfg:
+            self.cfg["ms_tasklist_name"] = "Tasker"
+            config_changed = True
+        if "ms_client_id" not in self.cfg:
+            self.cfg["ms_client_id"] = ""
+            config_changed = True
+        if "ms_account_id" not in self.cfg:
+            self.cfg["ms_account_id"] = ""
+            config_changed = True
+        if config_changed:
+            save_config(self.cfg)
+        self.ms_sync_enabled = bool(self.cfg.get("ms_sync_enabled"))
+        self.ms_tasklist_name = self.cfg.get("ms_tasklist_name", "Tasker")
+        self.ms_client_id = self.cfg.get("ms_client_id", "")
+        self.ms_account_id = self.cfg.get("ms_account_id", "")
         self.tasks = load_tasks(self.data_file)
         self._file_mtime = self._get_file_mtime()
         self._last_save_ts = 0.0
+        self._ms_sync_timer = None
+        self._ms_sync_running = False
+        self._ms_sync_pending = False
 
         # ---- title bar ----
         self.title_bar = TitleBar(self.root, on_close=self.quit_app,
@@ -181,6 +209,12 @@ class TaskerApp:
         self.selected_index = index
         self.task_list.update_selection(index)
 
+    def _indent_value(self, value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
     def _update_text(self, index, var):
         if index < len(self.tasks) and not self.tasks[index].get("done", False):
             self.tasks[index]["text"] = var.get()
@@ -190,9 +224,10 @@ class TaskerApp:
         self.tasks[index]["done"] = var.get()
         # cascade to children: completing or un-completing a parent
         # also completes or un-completes all its children
-        parent_indent = self.tasks[index].get("indent", 0)
+        parent_indent = self._indent_value(self.tasks[index].get("indent", 0))
         for j in range(index + 1, len(self.tasks)):
-            if self.tasks[j].get("indent", 0) > parent_indent:
+            child_indent = self._indent_value(self.tasks[j].get("indent", 0))
+            if child_indent > parent_indent:
                 self.tasks[j]["done"] = var.get()
             else:
                 break
@@ -216,15 +251,15 @@ class TaskerApp:
 
     def _indent_row(self, index):
         if index > 0:
-            cur = self.tasks[index].get("indent", 0)
-            prev_indent = self.tasks[index - 1].get("indent", 0)
+            cur = self._indent_value(self.tasks[index].get("indent", 0))
+            prev_indent = self._indent_value(self.tasks[index - 1].get("indent", 0))
             if cur <= prev_indent:
                 self.tasks[index]["indent"] = cur + 1
                 self._save_and_rebuild()
         return "break"
 
     def _unindent_row(self, index):
-        cur = self.tasks[index].get("indent", 0)
+        cur = self._indent_value(self.tasks[index].get("indent", 0))
         if cur > 0:
             self.tasks[index]["indent"] = cur - 1
             self._save_and_rebuild()
@@ -272,9 +307,10 @@ class TaskerApp:
         if index < len(self.tasks):
             new_state = not self.tasks[index].get("done", False)
             self.tasks[index]["done"] = new_state
-            parent_indent = self.tasks[index].get("indent", 0)
+            parent_indent = self._indent_value(self.tasks[index].get("indent", 0))
             for j in range(index + 1, len(self.tasks)):
-                if self.tasks[j].get("indent", 0) > parent_indent:
+                child_indent = self._indent_value(self.tasks[j].get("indent", 0))
+                if child_indent > parent_indent:
                     self.tasks[j]["done"] = new_state
                 else:
                     break
@@ -389,10 +425,68 @@ class TaskerApp:
         save_tasks(self.data_file, self.tasks)
         self._file_mtime = self._get_file_mtime()
         self._last_save_ts = _time.time()
+        self._schedule_ms_sync()
 
     def _save_and_rebuild(self):
         self._save()
         self._rebuild_rows()
+
+    # ---- Microsoft To Do sync ----
+    def _schedule_ms_sync(self, delay_ms=2000):
+        if not self.ms_sync_enabled or not self.ms_client_id:
+            return
+        if self._ms_sync_timer is not None:
+            try:
+                self.root.after_cancel(self._ms_sync_timer)
+            except Exception:
+                pass
+        self._ms_sync_timer = self.root.after(delay_ms, self._start_ms_sync)
+
+    def _start_ms_sync(self):
+        if not self.ms_sync_enabled or not self.ms_client_id:
+            return
+        if self._ms_sync_running:
+            self._ms_sync_pending = True
+            return
+        self._ms_sync_running = True
+        self._ms_sync_pending = False
+        tasks_snapshot = list(self.tasks)
+        tasklist_name = self.ms_tasklist_name or "Tasker"
+        client_id = self.ms_client_id
+        thread = threading.Thread(
+            target=self._ms_sync_worker,
+            args=(tasks_snapshot, tasklist_name, client_id, self.ms_account_id),
+            daemon=True,
+        )
+        thread.start()
+
+    def _ms_sync_worker(self, tasks_snapshot, tasklist_name, client_id, account_id):
+        error = None
+        new_account_id = None
+        try:
+            from ..ms_todo_sync import push_tasks
+            new_account_id = push_tasks(
+                tasks_snapshot,
+                tasklist_name,
+                client_id,
+                account_id=account_id,
+                interactive=False,
+            )
+        except Exception as exc:
+            error = exc
+        self.root.after(0, lambda: self._on_ms_sync_done(error, new_account_id))
+
+    def _on_ms_sync_done(self, error, new_account_id):
+        self._ms_sync_running = False
+        if new_account_id and new_account_id != self.ms_account_id:
+            self.ms_account_id = new_account_id
+            self.cfg["ms_account_id"] = new_account_id
+            save_config(self.cfg)
+        if error:
+            print(f"[Tasker] Microsoft To Do sync failed: {error}", file=sys.stderr)
+        if self._ms_sync_pending:
+            self._ms_sync_pending = False
+            self._start_ms_sync()
 
     # ---- file watcher ----
     def _get_file_mtime(self):
@@ -416,6 +510,7 @@ class TaskerApp:
                     self._file_mtime = current_mtime
                     self.tasks = load_tasks(self.data_file)
                     self._rebuild_rows()
+                    self._schedule_ms_sync(delay_ms=0)
         except Exception:
             pass
         self.root.after(60000, self._watch_file)

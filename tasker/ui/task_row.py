@@ -33,7 +33,7 @@ class TaskRow:
                               highlightthickness=1, highlightbackground=UNFOCUS_BORDER_COLOR)
         self.frame.pack(fill=tk.X, padx=0, pady=0)
 
-        indent = task.get("indent", 0)
+        indent = int(task.get("indent", 0) or 0)
         self._callbacks = callbacks
         self._index = index
         self._readonly = readonly
@@ -142,6 +142,10 @@ class TaskRow:
                        lambda e: callbacks["on_move_down"](index))
                 w.bind("<Control-d>",
                        lambda e: callbacks["on_delete"](index))
+                w.bind("<space>",
+                       lambda e: callbacks["on_toggle_done_kb"](index))
+                w.bind("<Return>",
+                       lambda e: callbacks["on_toggle_done_kb"](index))
 
             # checkbox and star/reminder: fire on_focus for row selection
             self.chk.bind("<FocusIn>",
