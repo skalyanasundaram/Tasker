@@ -159,12 +159,14 @@ class TaskRow:
             self.entry.bind("<Alt-r>",
                             lambda e: callbacks["on_reminder_click"](index))
         else:
-            # readonly: arrow + tab navigation
+            # readonly: arrow + tab navigation + delete
             for w in self._focusables:
                 w.bind("<Up>", lambda e: callbacks["on_up"](index))
                 w.bind("<Down>", lambda e: callbacks["on_down"](index))
                 w.bind("<Tab>", lambda e, w=w: self._tab_forward(w))
                 w.bind("<Shift-Tab>", lambda e, w=w: self._tab_backward(w))
+                w.bind("<Control-d>",
+                       lambda e: callbacks["on_delete"](index))
 
     def _on_focus_in(self, widget):
         """Highlight the row border when any component gets focus."""
